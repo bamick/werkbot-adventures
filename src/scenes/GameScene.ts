@@ -10,15 +10,20 @@ import {
 
 const MAP_COLS = 30;
 const MAP_ROWS = 20;
-const WALL_THICKNESS = 2; // tiles
+const WALL_THICKNESS = 2;
+const ATTACK_RANGE = 60;
 
 export class GameScene extends Phaser.Scene {
   private player!: Player;
   private enemies: Enemy[] = [];
   private loot: Loot[] = [];
   private inventory: string[] = [];
-  private clickMarker!: Phaser.GameObjects.Arc;
-  private attackTarget: Enemy | null = null;
+  private keys!: {
+    w: Phaser.Input.Keyboard.Key;
+    a: Phaser.Input.Keyboard.Key;
+    s: Phaser.Input.Keyboard.Key;
+    d: Phaser.Input.Keyboard.Key;
+  };
 
   constructor() {
     super({ key: 'GameScene' });
@@ -38,48 +43,64 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.fadeIn(400);
 
-    // Click marker
-    this.clickMarker = this.add.circle(0, 0, 5, 0x5bb8f5, 0.7).setDepth(9999);
+    // WASD keys
+    this.keys = {
+      w: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      a: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+      s: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+      d: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+    };
 
-    this.input.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
-      const wx = ptr.worldX;
-      const wy = ptr.worldY;
+    // Mouse click = attack nearest enemy within range
+    this.input.on('pointerdown', () => {
+      const time = this.time.now;
+      if (!this.player.canAttack(time)) return;
 
-      // Check if clicking an enemy
-      const clicked = this.enemies.find(e => Phaser.Math.Distance.Between(e.x, e.y, wx, wy) < 20);
-      if (clicked) {
-        this.attackTarget = clicked;
-        this.player.moveTo(clicked.x, clicked.y);
+      // Find closest enemy within attack range of the player
+      let closest: Enemy | null = null;
+      let closestDist = ATTACK_RANGE;
+
+      for (const enemy of this.enemies) {
+        const dist = Phaser.Math.Distance.Between(
+          this.player.x, this.player.y, enemy.x, enemy.y,
+        );
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = enemy;
+        }
+      }
+
+      if (closest) {
+        this.player.recordAttack(time);
+        this.attackEnemy(closest);
       } else {
-        this.attackTarget = null;
-        this.player.moveTo(wx, wy);
-        this.clickMarker.setPosition(wx, wy).setAlpha(1);
-        this.tweens.add({
-          targets: this.clickMarker,
-          alpha: 0,
-          duration: 400,
-        });
+        // Swing animation even on a miss
+        this.player.recordAttack(time);
+        this.cameras.main.shake(40, 0.001);
       }
     });
+
+    // Update HUD controls hint
+    this.getUI()?.showMessage('WASD to move  •  Click to attack');
   }
 
   update(_time: number, delta: number) {
     const time = this.time.now;
-    this.player.update(delta);
 
-    // Attack target tracking
-    if (this.attackTarget && !this.attackTarget.isDead()) {
-      const dist = Phaser.Math.Distance.Between(
-        this.player.x, this.player.y,
-        this.attackTarget.x, this.attackTarget.y,
-      );
-      if (dist < 40 && this.player.canAttack(time)) {
-        this.player.recordAttack(time);
-        this.attackEnemy(this.attackTarget);
-      } else {
-        this.player.moveTo(this.attackTarget.x, this.attackTarget.y);
-      }
-    }
+    this.player.update(delta, {
+      w: this.keys.w.isDown,
+      a: this.keys.a.isDown,
+      s: this.keys.s.isDown,
+      d: this.keys.d.isDown,
+    });
+
+    // Clamp player inside room walls
+    const minX = TILE_SIZE * WALL_THICKNESS + 16;
+    const minY = TILE_SIZE * WALL_THICKNESS + 16;
+    const maxX = TILE_SIZE * (MAP_COLS - WALL_THICKNESS) - 16;
+    const maxY = TILE_SIZE * (MAP_ROWS - WALL_THICKNESS) - 16;
+    this.player.x = Phaser.Math.Clamp(this.player.x, minX, maxX);
+    this.player.y = Phaser.Math.Clamp(this.player.y, minY, maxY);
 
     // Enemy updates
     for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -98,11 +119,10 @@ export class GameScene extends Phaser.Scene {
         this.dropLoot(enemy.x, enemy.y);
         enemy.destroy();
         this.enemies.splice(i, 1);
-        if (this.attackTarget === enemy) this.attackTarget = null;
       }
     }
 
-    // Loot pickup
+    // Loot pickup — walk over to collect
     for (let i = this.loot.length - 1; i >= 0; i--) {
       const item = this.loot[i];
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, item.x, item.y);
@@ -126,7 +146,6 @@ export class GameScene extends Phaser.Scene {
     enemy.takeDamage(PLAYER_ATTACK_DAMAGE);
     this.cameras.main.shake(80, 0.003);
 
-    // Flash red
     this.tweens.add({
       targets: enemy,
       alpha: 0.3,
@@ -160,10 +179,8 @@ export class GameScene extends Phaser.Scene {
     const totalW = TILE_SIZE * MAP_COLS;
     const totalH = TILE_SIZE * MAP_ROWS;
 
-    // Floor
     this.add.rectangle(totalW / 2, totalH / 2, totalW, totalH, 0x1a1a2e);
 
-    // Draw tile grid
     const g = this.add.graphics();
     g.lineStyle(1, 0x222244, 0.4);
     for (let col = 0; col <= MAP_COLS; col++) {
@@ -173,26 +190,19 @@ export class GameScene extends Phaser.Scene {
       g.lineBetween(0, row * TILE_SIZE, totalW, row * TILE_SIZE);
     }
 
-    // Walls (border)
     const wallColor = 0x3a2a5c;
     const wallLight = 0x5a4a8c;
 
-    // Top wall
     this.add.rectangle(totalW / 2, TILE_SIZE, totalW, TILE_SIZE * WALL_THICKNESS, wallColor);
-    // Bottom wall
     this.add.rectangle(totalW / 2, totalH - TILE_SIZE, totalW, TILE_SIZE * WALL_THICKNESS, wallColor);
-    // Left wall
     this.add.rectangle(TILE_SIZE, totalH / 2, TILE_SIZE * WALL_THICKNESS, totalH, wallColor);
-    // Right wall
     this.add.rectangle(totalW - TILE_SIZE, totalH / 2, TILE_SIZE * WALL_THICKNESS, totalH, wallColor);
 
-    // Wall outlines
     const gw = this.add.graphics();
     gw.lineStyle(2, wallLight);
     gw.strokeRect(TILE_SIZE * WALL_THICKNESS, TILE_SIZE * WALL_THICKNESS,
       totalW - TILE_SIZE * WALL_THICKNESS * 2, totalH - TILE_SIZE * WALL_THICKNESS * 2);
 
-    // Some interior pillars for cover
     const pillarPositions = [
       { x: 6, y: 5 }, { x: 23, y: 5 }, { x: 6, y: 14 }, { x: 23, y: 14 },
       { x: 14, y: 8 }, { x: 15, y: 8 }, { x: 14, y: 11 }, { x: 15, y: 11 },

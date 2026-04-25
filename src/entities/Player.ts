@@ -5,22 +5,13 @@ import { ASSETS } from '../config/assets';
 export class Player extends Phaser.GameObjects.Image {
   hp: number = PLAYER_MAX_HP;
   maxHp: number = PLAYER_MAX_HP;
-  private target: Phaser.Math.Vector2 | null = null;
-  private lastAttackTime: number = 0;
   attackDamage: number = 15;
+  private lastAttackTime: number = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, ASSETS.PLAYER);
     scene.add.existing(this);
     this.setDepth(y);
-  }
-
-  moveTo(worldX: number, worldY: number) {
-    this.target = new Phaser.Math.Vector2(worldX, worldY);
-  }
-
-  stopMoving() {
-    this.target = null;
   }
 
   canAttack(time: number): boolean {
@@ -35,21 +26,25 @@ export class Player extends Phaser.GameObjects.Image {
     this.hp = Math.max(0, this.hp - amount);
   }
 
-  update(delta: number) {
-    if (!this.target) return;
+  update(delta: number, keys: { w: boolean; a: boolean; s: boolean; d: boolean }) {
+    const speed = PLAYER_SPEED * (delta / 1000);
+    let dx = 0;
+    let dy = 0;
 
-    const dx = this.target.x - this.x;
-    const dy = this.target.y - this.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (keys.w) dy -= 1;
+    if (keys.s) dy += 1;
+    if (keys.a) dx -= 1;
+    if (keys.d) dx += 1;
 
-    if (dist < 4) {
-      this.target = null;
-      return;
+    // Normalize diagonal movement
+    if (dx !== 0 && dy !== 0) {
+      const len = Math.sqrt(2);
+      dx /= len;
+      dy /= len;
     }
 
-    const speed = PLAYER_SPEED * (delta / 1000);
-    this.x += (dx / dist) * speed;
-    this.y += (dy / dist) * speed;
+    this.x += dx * speed;
+    this.y += dy * speed;
     this.setDepth(this.y);
   }
 }
