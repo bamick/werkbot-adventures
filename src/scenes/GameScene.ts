@@ -80,8 +80,10 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Update HUD controls hint
-    this.getUI()?.showMessage('WASD to move  •  Click to attack');
+    // Show controls hint after UIScene has had time to initialize
+    this.time.delayedCall(100, () => {
+      this.getUI()?.showMessage('WASD to move  •  Click to attack');
+    });
   }
 
   update(_time: number, delta: number) {
