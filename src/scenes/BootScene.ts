@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { ASSETS } from '../config/assets';
 
 export class BootScene extends Phaser.Scene {

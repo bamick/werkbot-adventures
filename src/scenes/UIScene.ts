@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { PLAYER_MAX_HP, GAME_WIDTH } from '../config/constants';
 
 export class UIScene extends Phaser.Scene {

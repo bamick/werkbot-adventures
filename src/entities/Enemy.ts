@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { ENEMY_SPEED, ENEMY_MAX_HP, ENEMY_ATTACK_DAMAGE, ENEMY_DETECTION_RADIUS, ATTACK_COOLDOWN_MS } from '../config/constants';
 import { ASSETS } from '../config/assets';
 

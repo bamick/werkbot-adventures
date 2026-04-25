@@ -1,4 +1,4 @@
-import Phaser from 'phaser';
+import * as Phaser from 'phaser';
 import { PLAYER_SPEED, PLAYER_MAX_HP, ATTACK_COOLDOWN_MS } from '../config/constants';
 import { ASSETS } from '../config/assets';
 
